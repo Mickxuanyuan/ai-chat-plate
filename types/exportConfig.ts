@@ -1,5 +1,4 @@
 import type { Locales } from "./locale";
-import type { ThemeMode } from "./theme";
 
 /**
  * 配置设置
@@ -22,7 +21,6 @@ export interface ConfigSettings {
   presencePenalty: number;
   primaryColor: string;
   temperature: number;
-  themeMode: ThemeMode;
   token: string;
   topP: number;
 }

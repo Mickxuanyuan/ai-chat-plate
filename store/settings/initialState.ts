@@ -1,3 +1,10 @@
+/**
+ * Settings Store：state types + initial state（默认值与状态结构）。
+ *
+ * - `DEFAULT_SETTINGS`：可导出/可持久化的业务设置默认值（模型参数、语言、主题等）
+ * - `GlobalSettingsState`：settings store 的完整状态结构（包含 UI 状态 + 可持久化设置）
+ * - `initialState`：zustand store 运行时初始值（通常用于创建 store 时展开）
+ */
 import type { ConfigSettings } from "@/types/exportConfig";
 
 /**
@@ -129,13 +136,6 @@ export const DEFAULT_SETTINGS: ConfigSettings = {
    * - 常见范围：`[0, 2]`
    */
   temperature: 0.5,
-
-  /**
-   * UI：主题模式。
-   * - `system`：跟随系统偏好
-   * - `light` / `dark`：强制主题
-   */
-  themeMode: "system",
 
   /**
    * OpenAI：API Key（可选）。
