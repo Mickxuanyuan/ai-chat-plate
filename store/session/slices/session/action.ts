@@ -5,7 +5,6 @@
  * - 通过 `dispatchSession -> sessionsReducer` 更新 sessions 数据
  * - 与 Next Router 联动，切换会话时同步更新路由
  */
-import Router from "next/router";
 import type { StateCreator } from "zustand/vanilla";
 
 import type { SessionStore } from "@/store/session";
@@ -16,6 +15,11 @@ import { uuid } from "@/utils/uuid";
 import { type SessionDispatch, sessionsReducer } from "./reducers/session";
 
 export interface SessionAction {
+  /**
+   * @title 激活会话
+   * @param sessionId - 会话 ID
+   * @returns void
+   */
   activeSession: (sessionId: string) => void;
   /**
    * @title 添加会话
@@ -101,10 +105,6 @@ export const createSessionSlice: StateCreator<
 
   removeSession: (sessionId) => {
     get().dispatchSession({ id: sessionId, type: "removeSession" });
-
-    if (sessionId === get().activeId) {
-      Router.push("/");
-    }
   },
 
   switchSession: async (sessionId) => {
@@ -113,9 +113,6 @@ export const createSessionSlice: StateCreator<
     if (sessionId) {
       get().activeSession(sessionId);
     }
-
-    // 新会话
-    await Router.push(`/chat/${sessionId}`);
   },
 
   // genShareUrl: () => {

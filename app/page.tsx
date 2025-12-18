@@ -1,21 +1,9 @@
 "use client";
 
 import { useTheme } from "./_components/ThemeProvider";
-import { useExampleCharactersBusiness } from "./_services/example.business";
 
 export default function Home() {
   const { mode, resolvedTheme, setMode } = useTheme();
-  const {
-    alignment,
-    search,
-    newName,
-    setAlignment,
-    setSearch,
-    setNewName,
-    listQuery,
-    items,
-    createMutation,
-  } = useExampleCharactersBusiness();
 
   return (
     <div>

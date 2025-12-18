@@ -3,7 +3,7 @@
 本项目是一个 Next.js（App Router）示例工程，核心目的：
 
 - **Zustand 管 UI 状态**
-- **React Query 管服务端数据（请求/缓存）**
+- **本项目不使用 React Query（请求在 Zustand 中发起）**
 - **展示组件与数据请求彻底解耦**
 
 ---
@@ -77,9 +77,9 @@ ThemeProvider 按“组件 5 件套”规范组织，目录：
 
 - 管理 `system | light | dark` 模式
 - 读取/写入 `localStorage`
-- 将最终主题写入 `document.documentElement[data-theme]`
+- 将最终主题写入 `document.documentElement.classList`（切换 `dark` class）
 
-全局样式通过 `app/globals.css` 的 `[data-theme="light|dark"]` 覆盖生效。
+全局样式通过 `app/globals.css` 的 `:root`（light）与 `.dark`（dark）覆盖生效。
 
 更完整的主题落地说明见：
 
@@ -112,12 +112,10 @@ ThemeProvider 按“组件 5 件套”规范组织，目录：
 1. 初始化 Next.js（App Router）
 2. 安装依赖：
    - `zustand`
-   - `@tanstack/react-query`
-3. 在 `app/providers.tsx` 挂载 QueryClientProvider
-4. 加 `@/` alias（`tsconfig.json`）
-5. 添加 `model/http.ts`
-6. 按分层规则组织代码（`AGENTS.md` 作为规范入口）
-7. 如果需要 Storybook：
+3. 加 `@/` alias（`tsconfig.json`）
+4. 添加 `model/http.ts`
+5. 按分层规则组织代码（`AGENTS.md` 作为规范入口）
+6. 如果需要 Storybook：
    - 增加 scripts：`storybook` / `build-storybook`
    - 配置 `.storybook/main.ts` 扫描 `app/**` 的 `.stories.*`
 

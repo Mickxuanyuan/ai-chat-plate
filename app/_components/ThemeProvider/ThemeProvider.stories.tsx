@@ -7,7 +7,7 @@ const meta: Meta<typeof ThemeProvider> = {
   args: {
     defaultMode: "system",
     storageKey: "theme-mode",
-    attribute: "data-theme",
+    attribute: "class",
     children: null,
   },
 };

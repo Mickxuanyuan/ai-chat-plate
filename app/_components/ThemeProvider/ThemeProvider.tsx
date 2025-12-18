@@ -21,7 +21,7 @@ export default function ThemeProvider({
   children,
   defaultMode = "system",
   storageKey = "theme-mode",
-  attribute = "data-theme",
+  attribute = "class",
 }: ThemeProviderProps) {
   const [mode, setMode] = useState<ThemeMode>(defaultMode);
   const [systemTheme, setSystemTheme] = useState(() => resolveTheme("system"));
@@ -46,8 +46,10 @@ export default function ThemeProvider({
   );
 
   useEffect(() => {
-    document.documentElement.setAttribute(attribute, resolvedTheme);
-  }, [attribute, resolvedTheme]);
+    // 单一方案：shadcn/ui & Tailwind `dark:` 都基于 `html.dark`。
+    // `app/globals.css` 里也用 `.dark { ... }` 覆盖 CSS 变量。
+    document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
+  }, [resolvedTheme]);
 
   const setModeAndPersist = useCallback(
     (nextMode: ThemeMode) => {

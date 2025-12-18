@@ -6,7 +6,11 @@ export type ThemeProviderProps = {
   children: React.ReactNode;
   defaultMode?: ThemeMode;
   storageKey?: string;
-  attribute?: "data-theme";
+  /**
+   * Theme mount strategy.
+   * - 推荐仅使用 `"class"`：shadcn/ui 默认方案，通过给 `document.documentElement` 加/删 `dark` class 切换
+   */
+  attribute?: "class";
 };
 
 export type ThemeContextValue = {

@@ -145,7 +145,7 @@ export const createAgentSlice: StateCreator<
           value: preValue,
         });
       },
-      onLoadingChange: (loading) => {
+      onLoadingChange: (loading: boolean) => {
         updateLoadingState("description", loading);
       },
       onMessageHandle: internalUpdateAgentMeta(id)("description"),
@@ -183,7 +183,7 @@ export const createAgentSlice: StateCreator<
           value: previousTitle,
         });
       },
-      onLoadingChange: (loading) => {
+      onLoadingChange: (loading: boolean) => {
         updateLoadingState("title", loading);
       },
       onMessageHandle: internalUpdateAgentMeta(id)("title"),
