@@ -1,29 +1,11 @@
 "use client";
 
-/**
- * DraggablePanel（当前项目实现）
- *
- * 目标：在不引入额外第三方库的前提下，实现一个“可折叠 + 可拖拽调整尺寸”的面板容器。
- *
- * 为什么要重写：
- * - 旧实现依赖 `antd/antd-style/ahooks/re-resizable/react-layout-kit/use-merge-value` 等，本项目 `package.json`
- *   并未声明这些依赖；为了“统一技术栈”，这里改为 Tailwind + 原生 Pointer Events 实现。
- *
- * 功能点（保持与旧版本一致的用户体验）：
- * - 支持受控/非受控展开：`expand` / `onExpandChange` 与 `defaultExpand`
- * - 支持固定/悬浮：`mode=fixed|float`
- * - 支持 hover 自动展开：当 `pin=false` 时 hover 展开，离开后延迟折叠
- * - 支持拖拽改变尺寸：仅允许拖拽与 `placement` 相反的那条边（例如 left 面板拖右边缘）
- * - 支持 `destroyOnClose`：折叠时是否卸载 children
- *
- * 组件定位：纯 UI（`app/_components/*`）——不读写 store、不发请求。
- */
-
 import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  X,
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import {
@@ -36,11 +18,20 @@ import {
   useTransition,
 } from "react";
 
+import { Button } from "@/app/_components/ui/button";
 import { cn } from "@/utils/tools";
 
-import { reversePlacement } from "./helpers";
+import {
+  clampNumber,
+  getDocumentDir,
+  isInteractiveTarget,
+  reversePlacement,
+  toPxNumber,
+} from "./helpers";
 import type {
   DraggablePanelDelta,
+  DraggablePanelPosition,
+  DraggablePanelPositionDelta,
   DraggablePanelProps,
   DraggablePanelSize,
 } from "./interface";
@@ -53,21 +44,15 @@ const DEFAULT_MODE = "fixed";
 const DEFAULT_EXPANDABLE = true;
 const DEFAULT_EXPAND = true;
 const DEFAULT_SHOW_HANDLE_WIDE_AREA = true;
-
-type ResizeEdge = "top" | "right" | "bottom" | "left";
-
-function clampNumber(value: number, min?: number, max?: number) {
-  const safeMin = typeof min === "number" ? min : -Infinity;
-  const safeMax = typeof max === "number" ? max : Infinity;
-  return Math.min(safeMax, Math.max(safeMin, value));
-}
+const DEFAULT_FLOAT_POSITION: DraggablePanelPosition = { x: 16, y: 16 };
+const DEFAULT_COLLAPSED_FLOAT_SIZE = 44;
 
 function isResizeEnabled(
   resize: DraggablePanelProps["resize"],
-  edge: ResizeEdge,
+  edge: "top" | "right" | "bottom" | "left",
 ) {
   if (resize === false) return false;
-  if (!resize) return true;
+  if (resize === true || resize === undefined) return true;
   return resize[edge] !== false;
 }
 
@@ -83,7 +68,7 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     defaultExpand = DEFAULT_EXPAND,
     onExpandChange,
     destroyOnClose,
-    showHandleWhenCollapsed,
+    showHandleWhenCollapsed = true,
     showHandleWideArea = DEFAULT_SHOW_HANDLE_WIDE_AREA,
     showHandleHighlight,
     showBorder = true,
@@ -96,12 +81,19 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     defaultSize,
     onSizeChange,
     onSizeDragging,
+    draggable = false,
+    dragHandleSelector = "[data-draggable-panel-handle]",
+    position,
+    defaultPosition,
+    onPositionChange,
+    onPositionDragging,
     classNames,
     styles,
     className,
     style,
     backgroundColor,
     dir,
+    sizing = "internal",
     children,
     ...rest
   } = props;
@@ -109,61 +101,83 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const [isPending, startTransition] = useTransition();
 
-  /**
-   * 展开状态（受控/非受控）
-   */
   const [internalExpand, setInternalExpand] = useState(defaultExpand);
   const isExpand = expand ?? internalExpand;
 
   const setExpandState = useCallback(
     (next: boolean) => {
       if (!expandable) return;
-
-      if (expand === undefined) {
-        setInternalExpand(next);
-      }
+      if (expand === undefined) setInternalExpand(next);
       onExpandChange?.(next);
     },
     [expand, expandable, onExpandChange],
   );
 
-  /**
-   * 方向处理（支持通过 `dir="rtl"` 让左右 placement 翻转）
-   */
+  const direction = dir ?? getDocumentDir();
   const internalPlacement = useMemo(() => {
-    if (dir !== "rtl") return placement;
+    if (direction !== "rtl") return placement;
     if (placement === "left") return "right";
     if (placement === "right") return "left";
     return placement;
-  }, [dir, placement]);
+  }, [direction, placement]);
 
   const isVertical =
     internalPlacement === "top" || internalPlacement === "bottom";
-  const resizeEdge = reversePlacement(internalPlacement) as ResizeEdge;
+  const resizeEdge = reversePlacement(internalPlacement);
+  const isDraggable = mode === "float" && draggable;
+  const isExternalSizing = sizing === "external";
 
-  /**
-   * 尺寸状态（受控/非受控）
-   *
-   * 说明：
-   * - 面板只会在一个方向上缩放（width 或 height），另一个方向由布局撑满
-   * - 我们只存储可缩放方向的尺寸，避免不必要的状态复杂度
-   */
   const [internalSize, setInternalSize] = useState<DraggablePanelSize>(() => {
-    if (isVertical) {
+    if (isDraggable) {
       return {
         height: defaultSize?.height ?? DEFAULT_HEIGHT,
+        width: defaultSize?.width ?? DEFAULT_WIDTH,
       };
     }
-    return {
-      width: defaultSize?.width ?? DEFAULT_WIDTH,
-    };
+
+    if (isVertical) {
+      return { height: defaultSize?.height ?? DEFAULT_HEIGHT, width: "100%" };
+    }
+    return { height: "100%", width: defaultSize?.width ?? DEFAULT_WIDTH };
   });
+  const resolvedSize = { ...internalSize, ...size };
 
-  const resolvedSize = size ?? internalSize;
+  const [internalPosition, setInternalPosition] =
+    useState<DraggablePanelPosition>(() => {
+      const base = defaultPosition ?? DEFAULT_FLOAT_POSITION;
+      return {
+        x: base.x,
+        y: Math.max(0, headerHeight) + base.y,
+      };
+    });
+  const resolvedPosition = position ?? internalPosition;
 
-  /**
-   * Hover 自动展开/折叠（当 pin=false）
-   */
+  const applyResize = useCallback(
+    (
+      next: DraggablePanelSize,
+      delta: DraggablePanelDelta,
+      isFinal: boolean,
+    ) => {
+      if (size === undefined) setInternalSize(next);
+      if (isFinal) onSizeChange?.(delta, next);
+      else onSizeDragging?.(delta, next);
+    },
+    [onSizeChange, onSizeDragging, size],
+  );
+
+  const applyPosition = useCallback(
+    (
+      next: DraggablePanelPosition,
+      delta: DraggablePanelPositionDelta,
+      isFinal: boolean,
+    ) => {
+      if (position === undefined) setInternalPosition(next);
+      if (isFinal) onPositionChange?.(delta, next);
+      else onPositionDragging?.(delta, next);
+    },
+    [onPositionChange, onPositionDragging, position],
+  );
+
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -187,9 +201,6 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     }, 150);
   }, [pin, setExpandState]);
 
-  /**
-   * Pointer 拖拽缩放
-   */
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef<{
     pointerId: number;
@@ -198,44 +209,46 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     startSize: DraggablePanelSize;
   } | null>(null);
 
-  const applyResize = useCallback(
-    (
-      next: DraggablePanelSize,
-      delta: DraggablePanelDelta,
-      isFinal: boolean,
-    ) => {
-      if (size === undefined) {
-        setInternalSize(next);
-      }
-
-      if (isFinal) onSizeChange?.(delta, next);
-      else onSizeDragging?.(delta, next);
-    },
-    [onSizeChange, onSizeDragging, size],
-  );
-
   const onResizePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!isExpand) return;
       if (!isResizeEnabled(resize, resizeEdge)) return;
 
       setIsResizing(true);
-
-      const startSize: DraggablePanelSize = {
-        width: resolvedSize.width,
-        height: resolvedSize.height,
-      };
-
       resizeStartRef.current = {
         pointerId: e.pointerId,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        startSize,
+        startSize: {
+          width: resolvedSize.width,
+          height: resolvedSize.height,
+        },
       };
-
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     [isExpand, resize, resizeEdge, resolvedSize.height, resolvedSize.width],
+  );
+
+  const onResizeCornerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDraggable) return;
+      if (!isExpand) return;
+      if (resize === false) return;
+
+      setIsResizing(true);
+      resizeStartRef.current = {
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startSize: {
+          width: resolvedSize.width,
+          height: resolvedSize.height,
+        },
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    },
+    [isDraggable, isExpand, resize, resolvedSize.height, resolvedSize.width],
   );
 
   const onResizePointerMove = useCallback(
@@ -251,7 +264,7 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
       const delta: DraggablePanelDelta = {};
 
       if (!isVertical) {
-        const startWidth = start.startSize.width ?? DEFAULT_WIDTH;
+        const startWidth = toPxNumber(start.startSize.width, DEFAULT_WIDTH);
         const rawDelta =
           internalPlacement === "left"
             ? dx
@@ -263,11 +276,11 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
           minWidth,
           maxWidth,
         );
-
         next.width = nextWidth;
+        next.height = "100%";
         delta.width = nextWidth - startWidth;
       } else {
-        const startHeight = start.startSize.height ?? DEFAULT_HEIGHT;
+        const startHeight = toPxNumber(start.startSize.height, DEFAULT_HEIGHT);
         const rawDelta =
           internalPlacement === "top"
             ? dy
@@ -279,8 +292,8 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
           minHeight,
           maxHeight,
         );
-
         next.height = nextHeight;
+        next.width = "100%";
         delta.height = nextHeight - startHeight;
       }
 
@@ -297,13 +310,35 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     ],
   );
 
+  const onResizeCornerPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+      if (e.pointerId !== start.pointerId) return;
+
+      const dx = e.clientX - start.startClientX;
+      const dy = e.clientY - start.startClientY;
+
+      const startWidth = toPxNumber(start.startSize.width, DEFAULT_WIDTH);
+      const startHeight = toPxNumber(start.startSize.height, DEFAULT_HEIGHT);
+      const nextWidth = clampNumber(startWidth + dx, minWidth, maxWidth);
+      const nextHeight = clampNumber(startHeight + dy, minHeight, maxHeight);
+
+      applyResize(
+        { height: nextHeight, width: nextWidth },
+        { height: nextHeight - startHeight, width: nextWidth - startWidth },
+        false,
+      );
+    },
+    [applyResize, maxHeight, maxWidth, minHeight, minWidth],
+  );
+
   const onResizePointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const start = resizeStartRef.current;
       if (!start) return;
       if (e.pointerId !== start.pointerId) return;
 
-      // 复用 move 的计算逻辑，但以“最终”事件触发 onSizeChange
       const dx = e.clientX - start.startClientX;
       const dy = e.clientY - start.startClientY;
 
@@ -311,7 +346,7 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
       const delta: DraggablePanelDelta = {};
 
       if (!isVertical) {
-        const startWidth = start.startSize.width ?? DEFAULT_WIDTH;
+        const startWidth = toPxNumber(start.startSize.width, DEFAULT_WIDTH);
         const rawDelta =
           internalPlacement === "left"
             ? dx
@@ -323,11 +358,11 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
           minWidth,
           maxWidth,
         );
-
         next.width = nextWidth;
+        next.height = "100%";
         delta.width = nextWidth - startWidth;
       } else {
-        const startHeight = start.startSize.height ?? DEFAULT_HEIGHT;
+        const startHeight = toPxNumber(start.startSize.height, DEFAULT_HEIGHT);
         const rawDelta =
           internalPlacement === "top"
             ? dy
@@ -339,8 +374,8 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
           minHeight,
           maxHeight,
         );
-
         next.height = nextHeight;
+        next.width = "100%";
         delta.height = nextHeight - startHeight;
       }
 
@@ -365,9 +400,144 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     ],
   );
 
-  /**
-   * Toggle（折叠/展开）按钮图标：与 placement 方向对应
-   */
+  const onResizeCornerPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+      if (e.pointerId !== start.pointerId) return;
+
+      const dx = e.clientX - start.startClientX;
+      const dy = e.clientY - start.startClientY;
+
+      const startWidth = toPxNumber(start.startSize.width, DEFAULT_WIDTH);
+      const startHeight = toPxNumber(start.startSize.height, DEFAULT_HEIGHT);
+      const nextWidth = clampNumber(startWidth + dx, minWidth, maxWidth);
+      const nextHeight = clampNumber(startHeight + dy, minHeight, maxHeight);
+
+      applyResize(
+        { height: nextHeight, width: nextWidth },
+        { height: nextHeight - startHeight, width: nextWidth - startWidth },
+        true,
+      );
+
+      setIsResizing(false);
+      resizeStartRef.current = null;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    },
+    [applyResize, maxHeight, maxWidth, minHeight, minWidth],
+  );
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startPosition: DraggablePanelPosition;
+  } | null>(null);
+
+  const clampPositionToOffsetParent = useCallback(
+    (next: DraggablePanelPosition) => {
+      const node = rootRef.current;
+      const parent = node?.offsetParent as HTMLElement | null;
+      if (!node || !parent) return next;
+
+      const maxX = Math.max(0, parent.clientWidth - node.offsetWidth);
+      const maxY = Math.max(0, parent.clientHeight - node.offsetHeight);
+      return {
+        x: clampNumber(next.x, 0, maxX),
+        y: clampNumber(next.y, 0, maxY),
+      };
+    },
+    [],
+  );
+
+  const onDragPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      if (!isDraggable) return;
+      if (!isExpand) return;
+      if (e.button !== 0) return;
+
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-draggable-panel-resize]")) return;
+      if (dragHandleSelector && !target.closest(dragHandleSelector)) return;
+      if (isInteractiveTarget(target)) return;
+
+      setIsDragging(true);
+      dragStartRef.current = {
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startPosition: resolvedPosition,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    },
+    [dragHandleSelector, isDraggable, isExpand, resolvedPosition],
+  );
+
+  const onDragPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      const start = dragStartRef.current;
+      if (!start) return;
+      if (e.pointerId !== start.pointerId) return;
+
+      const dx = e.clientX - start.startClientX;
+      const dy = e.clientY - start.startClientY;
+      const rawNext = {
+        x: start.startPosition.x + dx,
+        y: start.startPosition.y + dy,
+      };
+      const next = clampPositionToOffsetParent(rawNext);
+      applyPosition(
+        next,
+        {
+          x: next.x - start.startPosition.x,
+          y: next.y - start.startPosition.y,
+        },
+        false,
+      );
+    },
+    [applyPosition, clampPositionToOffsetParent],
+  );
+
+  const onDragPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      const start = dragStartRef.current;
+      if (!start) return;
+      if (e.pointerId !== start.pointerId) return;
+
+      const dx = e.clientX - start.startClientX;
+      const dy = e.clientY - start.startClientY;
+      const rawNext = {
+        x: start.startPosition.x + dx,
+        y: start.startPosition.y + dy,
+      };
+      const next = clampPositionToOffsetParent(rawNext);
+      applyPosition(
+        next,
+        {
+          x: next.x - start.startPosition.x,
+          y: next.y - start.startPosition.y,
+        },
+        true,
+      );
+
+      setIsDragging(false);
+      dragStartRef.current = null;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    },
+    [applyPosition, clampPositionToOffsetParent],
+  );
+
   const ArrowIcon = useMemo(() => {
     switch (internalPlacement) {
       case "top":
@@ -382,8 +552,10 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
   }, [internalPlacement]);
 
   const toggle = useMemo(() => {
-    const shouldShow = expandable && (isExpand || showHandleWhenCollapsed);
-    if (!shouldShow) return null;
+    if (isDraggable) return null;
+    if (!expandable) return null;
+    if (isResizing) return null;
+    if (!isExpand && !showHandleWhenCollapsed) return null;
 
     const isHorizontal =
       internalPlacement === "left" || internalPlacement === "right";
@@ -391,35 +563,38 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     const wrapperClassName = cn(
       "absolute z-10 opacity-0 transition-opacity",
       "group-hover:opacity-100",
+      "flex",
       showHandleWideArea ? "pointer-events-auto" : "pointer-events-none",
-      internalPlacement === "left" && "inset-y-0 right-[-16px] w-4",
-      internalPlacement === "right" && "inset-y-0 left-[-16px] w-4",
-      internalPlacement === "top" && "inset-x-0 bottom-[-16px] h-4",
-      internalPlacement === "bottom" && "inset-x-0 top-[-16px] h-4",
+      isHorizontal && "inset-y-0 w-4 items-center",
+      internalPlacement === "left" && "right-[-16px] justify-end",
+      internalPlacement === "right" && "left-[-16px] justify-start",
+      !isHorizontal && "inset-x-0 h-4 flex-col items-center",
+      internalPlacement === "top" && "bottom-[-16px] justify-end",
+      internalPlacement === "bottom" && "top-[-16px] justify-start",
     );
 
     const buttonClassName = cn(
-      "pointer-events-auto absolute flex items-center justify-center border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground",
-      isHorizontal ? "top-1/2 -translate-y-1/2" : "left-1/2 -translate-x-1/2",
+      "pointer-events-auto flex items-center justify-center border text-muted-foreground shadow-sm transition-colors hover:text-foreground",
+      "bg-background/80 backdrop-blur",
       internalPlacement === "left" &&
-        "right-0 h-4 w-12 rounded-b-lg rounded-t-lg border-l-0",
+        "h-4 w-[54px] rounded-b-lg rounded-t-lg border-l-0",
       internalPlacement === "right" &&
-        "left-0 h-4 w-12 rounded-b-lg rounded-t-lg border-r-0",
-      internalPlacement === "top" &&
-        "bottom-0 h-4 w-12 rounded-t-lg border-b-0",
-      internalPlacement === "bottom" &&
-        "top-0 h-4 w-12 rounded-b-lg border-t-0",
-      !isExpand && "opacity-100",
+        "h-4 w-[54px] rounded-b-lg rounded-t-lg border-r-0",
+      internalPlacement === "top" && "h-4 w-[54px] rounded-t-lg border-b-0",
+      internalPlacement === "bottom" && "h-4 w-[54px] rounded-b-lg border-t-0",
     );
 
     return (
       <div className={wrapperClassName}>
         <button
           type="button"
-          className={buttonClassName}
+          className={cn(buttonClassName, classNames?.handle)}
           aria-label={isExpand ? "Collapse panel" : "Expand panel"}
           onClick={() => startTransition(() => setExpandState(!isExpand))}
-          style={styles?.handle}
+          style={{
+            backgroundColor,
+            ...styles?.handle,
+          }}
         >
           <ArrowIcon
             className={cn(
@@ -432,20 +607,29 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     );
   }, [
     ArrowIcon,
+    backgroundColor,
+    classNames?.handle,
     expandable,
     internalPlacement,
+    isDraggable,
     isExpand,
+    isResizing,
     setExpandState,
     showHandleWhenCollapsed,
     showHandleWideArea,
     styles?.handle,
   ]);
 
-  /**
-   * 布局 + 尺寸样式（固定/悬浮）
-   */
   const positionStyle: CSSProperties = useMemo(() => {
     if (mode !== "float") return {};
+
+    if (isDraggable) {
+      return {
+        left: resolvedPosition.x,
+        position: "absolute",
+        top: resolvedPosition.y,
+      };
+    }
 
     if (internalPlacement === "left") {
       return { bottom: 0, left: 0, position: "absolute", top: headerHeight };
@@ -457,21 +641,55 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
       return { left: 0, position: "absolute", right: 0, top: headerHeight };
     }
     return { bottom: 0, left: 0, position: "absolute", right: 0 };
-  }, [headerHeight, internalPlacement, mode]);
+  }, [
+    headerHeight,
+    internalPlacement,
+    isDraggable,
+    mode,
+    resolvedPosition.x,
+    resolvedPosition.y,
+  ]);
 
   const sizeStyle: CSSProperties = useMemo(() => {
+    if (isExternalSizing) return { height: "100%", width: "100%" };
+
     if (!isExpand) {
+      if (isDraggable) {
+        return {
+          height: DEFAULT_COLLAPSED_FLOAT_SIZE,
+          width: DEFAULT_COLLAPSED_FLOAT_SIZE,
+        };
+      }
       return isVertical
         ? { height: 0, width: "100%" }
         : { height: "100%", width: 0 };
     }
 
-    if (isVertical) {
-      return { height: resolvedSize.height ?? DEFAULT_HEIGHT, width: "100%" };
+    if (isDraggable) {
+      return {
+        height: toPxNumber(resolvedSize.height, DEFAULT_HEIGHT),
+        width: toPxNumber(resolvedSize.width, DEFAULT_WIDTH),
+      };
     }
 
-    return { height: "100%", width: resolvedSize.width ?? DEFAULT_WIDTH };
-  }, [isExpand, isVertical, resolvedSize.height, resolvedSize.width]);
+    if (isVertical) {
+      return {
+        height: toPxNumber(resolvedSize.height, DEFAULT_HEIGHT),
+        width: "100%",
+      };
+    }
+    return {
+      height: "100%",
+      width: toPxNumber(resolvedSize.width, DEFAULT_WIDTH),
+    };
+  }, [
+    isExternalSizing,
+    isDraggable,
+    isExpand,
+    isVertical,
+    resolvedSize.height,
+    resolvedSize.width,
+  ]);
 
   const borderClassName = useMemo(() => {
     if (!showBorder || !isExpand) return "";
@@ -481,9 +699,13 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     return "border-t";
   }, [internalPlacement, isExpand, showBorder]);
 
-  const canResize = isExpand && isResizeEnabled(resize, resizeEdge);
+  const canResize =
+    !isExternalSizing &&
+    isExpand &&
+    (isDraggable ? resize !== false : isResizeEnabled(resize, resizeEdge));
   const resizeBar = useMemo(() => {
     if (!canResize) return null;
+    if (isDraggable) return null;
 
     const isHorizontal =
       internalPlacement === "left" || internalPlacement === "right";
@@ -491,6 +713,7 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
     return (
       <div
         aria-hidden="true"
+        data-draggable-panel-resize=""
         className={cn(
           "absolute z-20 bg-transparent",
           isHorizontal
@@ -510,11 +733,76 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
   }, [
     canResize,
     internalPlacement,
+    isDraggable,
     onResizePointerDown,
     onResizePointerMove,
     onResizePointerUp,
     showHandleHighlight,
   ]);
+
+  const resizeCorner = useMemo(() => {
+    if (!canResize) return null;
+    if (!isDraggable) return null;
+
+    return (
+      <div
+        aria-hidden="true"
+        data-draggable-panel-resize=""
+        className={cn(
+          "absolute bottom-0 right-0 z-20 size-3 cursor-nwse-resize bg-transparent",
+          showHandleHighlight && "hover:bg-primary/30 active:bg-primary/40",
+        )}
+        onPointerDown={onResizeCornerPointerDown}
+        onPointerMove={onResizeCornerPointerMove}
+        onPointerUp={onResizeCornerPointerUp}
+      />
+    );
+  }, [
+    canResize,
+    isDraggable,
+    onResizeCornerPointerDown,
+    onResizeCornerPointerMove,
+    onResizeCornerPointerUp,
+    showHandleHighlight,
+  ]);
+
+  const floatCollapsedToggle = useMemo(() => {
+    if (!isDraggable) return null;
+    if (!expandable) return null;
+    if (isExpand) return null;
+
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        aria-label="Expand panel"
+        className="h-full w-full rounded-md"
+        onClick={() => startTransition(() => setExpandState(true))}
+      >
+        <ArrowIcon className="size-4" />
+      </Button>
+    );
+  }, [ArrowIcon, expandable, isDraggable, isExpand, setExpandState]);
+
+  const floatCloseButton = useMemo(() => {
+    if (!isDraggable) return null;
+    if (!expandable) return null;
+    if (!isExpand) return null;
+
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label="Close panel"
+        className="absolute right-2 top-2 z-30"
+        onClick={() => startTransition(() => setExpandState(false))}
+      >
+        <X className="size-4" />
+      </Button>
+    );
+  }, [expandable, isDraggable, isExpand, setExpandState]);
 
   if (fullscreen) {
     return (
@@ -533,13 +821,19 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
       ref={rootRef}
       dir={dir}
       className={cn(
-        "group shrink-0 overflow-hidden border-border",
+        // root 需要 `overflow-visible`，否则折叠态的 toggle（带负 offset）会被裁剪看不到
+        "group shrink-0 overflow-visible border-border",
         mode === "float" ? "z-50" : "relative",
         borderClassName,
+        isDraggable && "rounded-lg border bg-background shadow-lg",
+        isExternalSizing && "h-full w-full shrink",
         className,
       )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      onPointerDown={onDragPointerDown}
+      onPointerMove={onDragPointerMove}
+      onPointerUp={onDragPointerUp}
       style={{
         ...positionStyle,
         ...sizeStyle,
@@ -547,18 +841,30 @@ const DraggablePanel = memo<DraggablePanelProps>((props) => {
         transition: isResizing
           ? "none"
           : "width 200ms ease, height 200ms ease, opacity 200ms ease",
+        cursor: isDragging ? "grabbing" : undefined,
         ...style,
       }}
       {...rest}
     >
       {toggle}
       {resizeBar}
+      {resizeCorner}
+      {floatCloseButton}
 
       <div
-        className={cn("h-full w-full bg-background", classNames?.content)}
+        className={cn(
+          "h-full w-full overflow-hidden bg-background",
+          classNames?.content,
+        )}
         style={{ backgroundColor, ...styles?.content }}
       >
-        {destroyOnClose ? (isExpand ? children : null) : children}
+        {isDraggable && !isExpand
+          ? floatCollapsedToggle
+          : destroyOnClose
+            ? isExpand
+              ? children
+              : null
+            : children}
       </div>
     </aside>
   );

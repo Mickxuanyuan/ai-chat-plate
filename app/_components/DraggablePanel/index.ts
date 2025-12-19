@@ -5,17 +5,10 @@ import DraggablePanelBody from "./components/DraggablePanelBody";
 import DraggablePanelContainer from "./components/DraggablePanelContainer";
 import DraggablePanelFooter from "./components/DraggablePanelFooter";
 import DraggablePanelHeader from "./components/DraggablePanelHeader";
+import DraggablePanelLayout from "./components/DraggablePanelLayout";
 import DraggablePanelBase from "./DraggablePanel";
 import type { DraggablePanelProps } from "./interface";
 
-/**
- * 标准导出形态：
- * - `default`: DraggablePanel（并挂载静态子组件）
- * - `named`: `DraggablePanel` / `DraggablePanelHeader` 等
- * - `types`: `DraggablePanelProps` 等
- *
- * 说明：这里将子组件挂到主组件上，便于使用方以 `DraggablePanel.Header` 的方式组织结构。
- */
 export type DraggablePanelComponent = ((
   props: DraggablePanelProps & RefAttributes<HTMLDivElement>,
 ) => ReactNode) & {
@@ -23,6 +16,7 @@ export type DraggablePanelComponent = ((
   Container: typeof DraggablePanelContainer;
   Footer: typeof DraggablePanelFooter;
   Header: typeof DraggablePanelHeader;
+  Layout: typeof DraggablePanelLayout;
 };
 
 export const DraggablePanel =
@@ -32,6 +26,7 @@ DraggablePanel.Body = DraggablePanelBody;
 DraggablePanel.Container = DraggablePanelContainer;
 DraggablePanel.Footer = DraggablePanelFooter;
 DraggablePanel.Header = DraggablePanelHeader;
+DraggablePanel.Layout = DraggablePanelLayout;
 
 export default DraggablePanel;
 
@@ -51,5 +46,9 @@ export {
   type DraggablePanelHeaderProps,
   default as DraggablePanelHeader,
 } from "./components/DraggablePanelHeader";
+export {
+  type DraggablePanelLayoutProps,
+  default as DraggablePanelLayout,
+} from "./components/DraggablePanelLayout";
 
 export type * from "./interface";

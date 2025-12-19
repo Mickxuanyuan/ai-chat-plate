@@ -1,12 +1,3 @@
-/**
- * DraggablePanelHeader
- *
- * 面板头部区域（可选）：
- * - 提供「折叠」按钮（panel icon）
- * - 提供「Pin/Unpin」按钮（控制 hover 自动展开/折叠）
- *
- * 注意：这里的 `pin` 与 `expand` 都是由外部控制的（通过 props 回调），组件自身不持有业务状态。
- */
 "use client";
 
 import { PanelLeft, Pin, PinOff } from "lucide-react";
@@ -18,28 +9,16 @@ import { cn } from "@/utils/tools";
 
 export interface DraggablePanelHeaderProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
-  /**
-   * 是否处于 Pin 状态（受控）。
-   * - Pin=true 时不会跟随 hover 自动折叠（由外部逻辑控制）
-   */
   pin?: boolean;
-  /**
-   * 控制按钮位置：
-   * - `left`: 左侧为折叠按钮，右侧为 pin
-   * - `right`: 左侧为 pin，右侧为折叠按钮
-   */
   position?: "left" | "right";
-  /**
-   * 通知父组件“展开/折叠”。
-   * - Header 只负责触发，不持有 expand 状态
-   */
   setExpand?: (expand: boolean) => void;
-  /**
-   * 通知父组件“Pin 状态变化”。
-   * - 如果不传 `pin`（非受控），Header 会用内部状态驱动 UI，并同步回调
-   */
   setPin?: (pin: boolean) => void;
   title?: string;
+  /**
+   * 是否作为拖拽手柄（配合 DraggablePanel 的 draggable 使用）。
+   * @default true
+   */
+  dragHandle?: boolean;
 }
 
 const DraggablePanelHeader = memo<DraggablePanelHeaderProps>((props) => {
@@ -50,6 +29,7 @@ const DraggablePanelHeader = memo<DraggablePanelHeaderProps>((props) => {
     setExpand,
     title,
     position = "left",
+    dragHandle = true,
     ...rest
   } = props;
 
@@ -88,8 +68,10 @@ const DraggablePanelHeader = memo<DraggablePanelHeaderProps>((props) => {
 
   return (
     <div
+      data-draggable-panel-handle={dragHandle ? "" : undefined}
       className={cn(
         "flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2",
+        dragHandle && "cursor-move select-none touch-none",
         className,
       )}
       {...rest}
