@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode, RefAttributes } from "react";
+import type { ReactNode } from "react";
 import DraggablePanelBody from "./components/DraggablePanelBody";
 import DraggablePanelContainer from "./components/DraggablePanelContainer";
 import DraggablePanelFooter from "./components/DraggablePanelFooter";
@@ -10,7 +10,7 @@ import DraggablePanelBase from "./DraggablePanel";
 import type { DraggablePanelProps } from "./interface";
 
 export type DraggablePanelComponent = ((
-  props: DraggablePanelProps & RefAttributes<HTMLDivElement>,
+  props: DraggablePanelProps,
 ) => ReactNode) & {
   Body: typeof DraggablePanelBody;
   Container: typeof DraggablePanelContainer;

@@ -2,7 +2,7 @@ import type { ResolvedTheme, ThemeMode } from "./interface";
 
 export function resolveTheme(mode: ThemeMode): ResolvedTheme {
   if (mode === "light" || mode === "dark") return mode;
-  return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches
+  return globalThis.matchMedia?.("(prefers-color-scheme: dark)")?.matches
     ? "dark"
     : "light";
 }

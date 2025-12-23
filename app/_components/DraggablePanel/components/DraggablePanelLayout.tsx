@@ -19,19 +19,13 @@ import {
 import { cn } from "@/utils/tools";
 
 import DraggablePanel from "../DraggablePanel";
-import type { DraggablePanelProps } from "../interface";
+import type { DraggablePanelLayoutPanelProps } from "../interface";
 
 export type DraggablePanelLayoutProps = {
   /**
    * 传给 DraggablePanel 的 props（children 由 `panel` 提供）。
-   * - `mode` 会被固定为 `fixed`
-   * - `resize` 会被固定为 `false`（缩放交给 Resizable）
-   * - `sizing` 会被固定为 `external`
    */
-  panelProps: Omit<
-    DraggablePanelProps,
-    "children" | "mode" | "resize" | "sizing"
-  >;
+  panelProps: DraggablePanelLayoutPanelProps;
   panel: ReactNode;
   content: ReactNode;
   defaultPanelSize?: number | string;
@@ -39,6 +33,7 @@ export type DraggablePanelLayoutProps = {
   maxPanelSize?: number | string;
   collapsedPanelSize?: number | string;
   withHandle?: boolean;
+  withCollapseButton?: boolean;
   className?: string;
   style?: CSSProperties;
 };
@@ -53,6 +48,7 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
     maxPanelSize,
     collapsedPanelSize = 0,
     withHandle = true,
+    withCollapseButton = true,
     className,
     style,
   } = props;
@@ -62,7 +58,7 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
     expand,
     defaultExpand = true,
     onExpandChange,
-    ...restPanelProps
+    destroyOnClose,
   } = panelProps;
 
   const [internalExpand, setInternalExpand] = useState(defaultExpand);
@@ -77,90 +73,124 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
   );
 
   const panelRef = useRef<PanelImperativeHandle | null>(null);
-  const lastExpandedSizeRef = useRef<number | string | undefined>(
-    defaultPanelSize,
+  const lastExpandedSizeRef = useRef<string | undefined>(undefined);
+
+  const toPercentageString = useCallback((value: number | string) => {
+    if (typeof value === "number") return `${value}%`;
+    return value;
+  }, []);
+
+  const resolvedCollapsedPanelSize = useMemo(
+    () => toPercentageString(collapsedPanelSize),
+    [collapsedPanelSize, toPercentageString],
+  );
+  const resolvedDefaultPanelSize = useMemo(
+    () => toPercentageString(defaultPanelSize ?? 25),
+    [defaultPanelSize, toPercentageString],
+  );
+  const resolvedMinPanelSize = useMemo(
+    () =>
+      minPanelSize === undefined ? undefined : toPercentageString(minPanelSize),
+    [minPanelSize, toPercentageString],
+  );
+  const resolvedMaxPanelSize = useMemo(
+    () =>
+      maxPanelSize === undefined ? undefined : toPercentageString(maxPanelSize),
+    [maxPanelSize, toPercentageString],
   );
 
   useEffect(() => {
     const api = panelRef.current;
     if (!api) return;
 
-    if (!isExpand) {
-      const current = api.getSize().asPercentage;
-      if (current > 0.5) lastExpandedSizeRef.current = current;
-      api.resize(collapsedPanelSize);
-      return;
-    }
+    const raf = window.requestAnimationFrame(() => {
+      try {
+        if (!isExpand) {
+          const current = api.getSize().asPercentage;
+          if (current > 0.5) lastExpandedSizeRef.current = `${current}%`;
+          api.resize(resolvedCollapsedPanelSize);
+          return;
+        }
 
-    api.resize(lastExpandedSizeRef.current ?? defaultPanelSize ?? 25);
-  }, [collapsedPanelSize, defaultPanelSize, isExpand]);
+        api.resize(lastExpandedSizeRef.current ?? resolvedDefaultPanelSize);
+      } catch {
+        // Storybook/HMR/StrictMode 下可能出现 group 尚未挂载或已卸载的瞬间，忽略即可。
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
+  }, [isExpand, resolvedCollapsedPanelSize, resolvedDefaultPanelSize]);
 
   const isHorizontal = placement === "left" || placement === "right";
   const orientation = isHorizontal ? "horizontal" : "vertical";
   const isPanelFirst = placement === "left" || placement === "top";
 
-  const ArrowIcon = useMemo(() => {
+  const [isHoverPanel, setIsHoverPanel] = useState(false);
+  const [isHoverHandle, setIsHoverHandle] = useState(false);
+
+  const panelBorderClassName = useMemo(() => {
+    if (!isExpand) return "";
+    if (placement === "left") return "border-r";
+    if (placement === "right") return "border-l";
+    if (placement === "top") return "border-b";
+    return "border-t";
+  }, [isExpand, placement]);
+
+  const ToggleIcon = useMemo(() => {
+    if (isExpand) {
+      switch (placement) {
+        case "left":
+          return ChevronLeft;
+        case "right":
+          return ChevronRight;
+        case "top":
+          return ChevronUp;
+        case "bottom":
+          return ChevronDown;
+      }
+    }
+
     switch (placement) {
+      case "left":
+        return ChevronRight;
+      case "right":
+        return ChevronLeft;
       case "top":
         return ChevronDown;
       case "bottom":
         return ChevronUp;
-      case "right":
-        return ChevronLeft;
-      case "left":
-        return ChevronRight;
     }
-  }, [placement]);
+  }, [isExpand, placement]);
 
-  const collapsedToggle = useMemo(() => {
-    if (isExpand) return null;
-
-    const positionClassName = cn(
-      placement === "left" && "left-0 top-1/2 -translate-y-1/2",
-      placement === "right" && "right-0 top-1/2 -translate-y-1/2",
-      placement === "top" && "top-0 left-1/2 -translate-x-1/2",
-      placement === "bottom" && "bottom-0 left-1/2 -translate-x-1/2",
-    );
-
-    return (
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon"
-        aria-label="Expand panel"
-        className={cn(
-          "absolute z-20 rounded-md shadow-sm",
-          "bg-background/80 backdrop-blur",
-          "opacity-0 transition-opacity group-hover:opacity-100",
-          positionClassName,
-        )}
-        onClick={() => setExpandState(true)}
-      >
-        <ArrowIcon className="size-4" />
-      </Button>
-    );
-  }, [ArrowIcon, isExpand, placement, setExpandState]);
+  const shouldShowToggle = withCollapseButton
+    ? isExpand
+      ? isHoverPanel || isHoverHandle
+      : isHoverHandle
+    : false;
 
   const panelNode = (
     <ResizablePanel
-      collapsedSize={collapsedPanelSize}
+      collapsedSize={resolvedCollapsedPanelSize}
       collapsible
-      defaultSize={defaultPanelSize}
-      maxSize={maxPanelSize}
-      minSize={minPanelSize}
+      defaultSize={resolvedDefaultPanelSize}
+      maxSize={resolvedMaxPanelSize}
+      minSize={resolvedMinPanelSize}
       panelRef={panelRef}
     >
       <DraggablePanel
-        {...restPanelProps}
-        defaultExpand={defaultExpand}
+        className={cn("h-full w-full border-border", panelBorderClassName)}
         expand={isExpand}
-        mode="fixed"
-        onExpandChange={setExpandState}
-        placement={placement}
-        resize={false}
-        sizing="external"
+        destroyOnClose={destroyOnClose}
       >
-        {panel}
+        <div
+          className="h-full w-full"
+          onPointerEnter={() => setIsHoverPanel(true)}
+          onPointerLeave={() => setIsHoverPanel(false)}
+        >
+          {panel}
+        </div>
       </DraggablePanel>
     </ResizablePanel>
   );
@@ -172,10 +202,34 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
       className={cn("group relative h-full w-full", className)}
       style={style}
     >
-      {collapsedToggle}
       <ResizablePanelGroup className="h-full w-full" orientation={orientation}>
         {isPanelFirst ? panelNode : contentNode}
-        <ResizableHandle withHandle={withHandle} />
+        <ResizableHandle
+          withHandle={withHandle}
+          className={cn(withCollapseButton && "relative")}
+          onPointerEnter={() => setIsHoverHandle(true)}
+          onPointerLeave={() => setIsHoverHandle(false)}
+        >
+          {withCollapseButton && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              aria-label={isExpand ? "Collapse panel" : "Expand panel"}
+              className={cn(
+                "absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-md",
+                "bg-background/90 backdrop-blur",
+                "ring-1 ring-border/60",
+                "hover:bg-background",
+                "opacity-0 transition-opacity",
+                shouldShowToggle && "opacity-100",
+              )}
+              onClick={() => setExpandState(!isExpand)}
+            >
+              <ToggleIcon className="size-4" />
+            </Button>
+          )}
+        </ResizableHandle>
         {isPanelFirst ? contentNode : panelNode}
       </ResizablePanelGroup>
     </div>

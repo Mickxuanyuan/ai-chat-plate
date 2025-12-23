@@ -15,69 +15,44 @@ const meta: Meta<typeof DraggablePanel> = {
   title: "app/DraggablePanel",
   component: DraggablePanel,
   args: {
-    placement: "left",
-    pin: true,
-    expandable: true,
-    showBorder: true,
-    showHandleHighlight: true,
-    showHandleWhenCollapsed: true,
     destroyOnClose: false,
-    headerHeight: 0,
-    minWidth: 180,
-    maxWidth: 520,
-    minHeight: 120,
-    maxHeight: 520,
   },
 };
 
 export default meta;
 type Story = StoryObj<typeof DraggablePanel>;
 
-export const Docked: Story = {
-  render: (args) => {
+export const ClickToggle: Story = {
+  render: () => {
     const [expand, setExpand] = useState(true);
-    const [pin, setPin] = useState(Boolean(args.pin));
-
-    const isHorizontal =
-      args.placement === "left" || args.placement === "right";
 
     return (
-      <div
-        className={[
-          "relative flex h-full w-full",
-          isHorizontal ? "flex-row" : "flex-col",
-        ].join(" ")}
-        style={{ height: 520 }}
-      >
-        <DraggablePanel
-          {...args}
-          expand={expand}
-          mode={pin ? "fixed" : "float"}
-          onExpandChange={setExpand}
-          pin={pin}
-        >
-          <DraggablePanelContainer className="flex h-full flex-col">
-            <DraggablePanelHeader
-              pin={pin}
-              position="left"
-              setExpand={setExpand}
-              setPin={setPin}
-              title="Sessions"
-            />
-            <DraggablePanelBody>
-              {pin ? "Pinned（不会 hover 折叠）" : "Hover（移出后延迟折叠）"}
-            </DraggablePanelBody>
-            <DraggablePanelFooter>Footer</DraggablePanelFooter>
-          </DraggablePanelContainer>
-        </DraggablePanel>
-
-        <div className="flex-1 p-6">
-          <div className="text-sm font-medium">Content</div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            试试拖动边缘缩放面板；点击边缘 handle 折叠/展开；Pin 切换 hover
-            自动展开。
-          </div>
-        </div>
+      <div className="h-[520px] w-full">
+        <DraggablePanelLayout
+          content={
+            <div className="h-full w-full p-6 text-sm text-muted-foreground">
+              点击面板 Header 的按钮可折叠；折叠后点击边缘按钮可展开。
+            </div>
+          }
+          defaultPanelSize={25}
+          maxPanelSize={60}
+          minPanelSize={15}
+          panel={
+            <DraggablePanelContainer className="flex h-full flex-col">
+              <DraggablePanelHeader setExpand={setExpand} title="Panel" />
+              <DraggablePanelBody>点击左上角按钮折叠面板</DraggablePanelBody>
+              <DraggablePanelFooter>Footer</DraggablePanelFooter>
+            </DraggablePanelContainer>
+          }
+          panelProps={{
+            defaultExpand: true,
+            expand,
+            onExpandChange: setExpand,
+            placement: "left",
+            destroyOnClose: false,
+          }}
+          withHandle
+        />
       </div>
     );
   },
@@ -86,20 +61,16 @@ export const Docked: Story = {
 export const ResizableLayout: Story = {
   render: () => {
     const [expand, setExpand] = useState(true);
-    const [pin, setPin] = useState(true);
 
     const panelProps = useMemo(
       () => ({
         defaultExpand: true,
         expand,
         onExpandChange: setExpand,
-        pin,
         placement: "left" as const,
-        showBorder: true,
-        showHandleHighlight: true,
-        showHandleWhenCollapsed: true,
+        destroyOnClose: false,
       }),
-      [expand, pin],
+      [expand],
     );
 
     return (
@@ -112,9 +83,7 @@ export const ResizableLayout: Story = {
           panel={
             <DraggablePanelContainer className="flex h-full flex-col">
               <DraggablePanelHeader
-                pin={pin}
                 setExpand={setExpand}
-                setPin={setPin}
                 title="Resizable Layout"
               />
               <DraggablePanelBody>
@@ -184,10 +153,7 @@ export const LobeHubLike: Story = {
           panelProps={{
             defaultExpand: true,
             placement: "left",
-            showBorder: true,
-            showHandleHighlight: false,
-            showHandleWhenCollapsed: true,
-            pin: true,
+            destroyOnClose: false,
           }}
           withHandle={false}
         />

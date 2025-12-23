@@ -1,56 +1,64 @@
-import { ActionIcon, Logo, SearchBar } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
-import { MessageSquarePlus } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import Link from 'next/link';
-import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
-import { shallow } from 'zustand/shallow';
+"use client";
 
-import { useSessionStore } from '@/store/session';
+import { MessageSquarePlus, Search } from "lucide-react";
+import Link from "next/link";
+import { memo, useId } from "react";
+import { useTranslation } from "react-i18next";
+import { shallow } from "zustand/shallow";
 
-export const useStyles = createStyles(({ css, token }) => ({
-  logo: css`
-    fill: ${token.colorText};
-  `,
-  top: css`
-    position: sticky;
-    top: 0;
-  `,
-}));
+import { Button } from "@/app/_components/ui/button";
+import { useSessionStore } from "@/store/session";
+import { cn } from "@/utils/tools";
 
 const Header = memo(() => {
-  const { styles } = useStyles();
-  const { t } = useTranslation('common');
+  const { t } = useTranslation("common");
+  const inputId = useId();
+
   const [keywords, createSession] = useSessionStore(
     (s) => [s.searchKeywords, s.createSession],
     shallow,
   );
 
   return (
-    <Flexbox className={styles.top} gap={16} padding={16}>
-      <Flexbox distribution={'space-between'} horizontal>
-        <Link href={'/'}>
-          <Logo className={styles.logo} size={36} type={'text'} />
+    <div className="shrink-0 space-y-3 border-b p-4">
+      <div className="flex items-center justify-between gap-2">
+        <Link href="/" className="text-2xl font-semibold tracking-tight">
+          AI-Chat
         </Link>
-        <ActionIcon
-          icon={MessageSquarePlus}
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="h-8 w-8"
+          aria-label={t("newAgent")}
           onClick={createSession}
-          size={{ fontSize: 24 }}
-          style={{ flex: 'none' }}
-          title={t('newAgent')}
+        >
+          <MessageSquarePlus className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="relative">
+        <label htmlFor={inputId} className="sr-only">
+          {t("searchAgentPlaceholder")}
+        </label>
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          id={inputId}
+          className={cn(
+            "h-10 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none ring-offset-background",
+            "placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          )}
+          placeholder={t("searchAgentPlaceholder")}
+          value={keywords}
+          onChange={(e) =>
+            useSessionStore.setState({ searchKeywords: e.target.value })
+          }
         />
-      </Flexbox>
-      <SearchBar
-        allowClear
-        onChange={(e) => useSessionStore.setState({ searchKeywords: e.target.value })}
-        placeholder={t('searchAgentPlaceholder')}
-        spotlight
-        type={'ghost'}
-        value={keywords}
-      />
-    </Flexbox>
+      </div>
+    </div>
   );
 });
+
+Header.displayName = "SessionListHeader";
 
 export default Header;

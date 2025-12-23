@@ -39,8 +39,7 @@ export const initialLobeAgentConfig: LobeAgentConfig = {
 /**
  * 当会话/Agent 未设置 avatar 时使用的默认头像。
  */
-export const DEFAULT_AVATAR =
-  "https://npm.elemecdn.com/@lobehub/assets-logo/assets/logo-3d.webp";
+export const DEFAULT_AVATAR = "/assets/images/icon.png";
 
 /**
  * 新建会话时的默认标题。
