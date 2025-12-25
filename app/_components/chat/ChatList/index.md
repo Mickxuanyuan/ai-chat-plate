@@ -50,9 +50,18 @@ export default function Demo() {
 - `showAvatar?: boolean`
 - `showTitle?: boolean`
 - `loadingId?: string`
-- `text?: { copy?: string; delete?: string; edit?: string; regenerate?: string }`
+- `text?: { copy?: string; delete?: string; edit?: string; regenerate?: string; history?: string }`
+- `enableHistoryCount?: boolean`
+- `historyCount?: number`
 - `onActionClick?: (action, id, message) => void`
+- `onActionsClick?: (action, id, message) => void`
+- `onAvatarsClick?: (message) => void`
 - `onMessageChange?: (id, content) => void`
+- `renderItems?: (message, defaultItem) => ReactNode`
+- `renderMessages?: (message) => ReactNode`
+- `renderErrorMessages?: (message) => ReactNode`
+- `renderMessagesExtra?: (message) => ReactNode`
+- `renderActions?: (message, defaultActions) => ReactNode`
 - 其余：继承 `HTMLAttributes<HTMLDivElement>`
 
 ## FAQ 注意事项

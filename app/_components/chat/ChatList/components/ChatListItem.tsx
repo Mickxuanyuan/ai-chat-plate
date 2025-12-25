@@ -1,7 +1,7 @@
 "use client";
 
-import { Copy, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import { memo, useCallback } from "react";
+import { RotateCcw } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 import {
   Avatar,
@@ -12,7 +12,15 @@ import { Button } from "@/app/_components/ui/button";
 import type { ChatMessage } from "@/types/chatMessage";
 import { cn } from "@/utils/tools";
 
-import type { ChatListActionType, ChatListText } from "../interface";
+import ChatListItemActions from "./ChatListItemActions";
+import type {
+  ChatListActionType,
+  ChatListRenderActions,
+  ChatListRenderErrorMessages,
+  ChatListRenderMessages,
+  ChatListRenderMessagesExtra,
+  ChatListText,
+} from "../interface";
 
 interface ChatListItemProps {
   loading: boolean;
@@ -22,7 +30,17 @@ interface ChatListItemProps {
     id: string,
     message: ChatMessage,
   ) => void;
+  onActionsClick?: (
+    action: ChatListActionType,
+    id: string,
+    message: ChatMessage,
+  ) => void;
+  onAvatarsClick?: (message: ChatMessage) => void;
   onMessageChange?: (id: string, content: string) => void;
+  renderActions?: ChatListRenderActions;
+  renderErrorMessages?: ChatListRenderErrorMessages;
+  renderMessages?: ChatListRenderMessages;
+  renderMessagesExtra?: ChatListRenderMessagesExtra;
   showAvatar: boolean;
   showTitle: boolean;
   text?: ChatListText;
@@ -38,10 +56,19 @@ const ChatListItem = memo<ChatListItemProps>(
     text,
     variant,
     onActionClick,
+    onActionsClick,
+    onAvatarsClick,
+    onMessageChange,
+    renderActions,
+    renderErrorMessages,
+    renderMessages,
+    renderMessagesExtra,
   }) => {
     const isUser = message.role === "user";
     const title = message.meta?.title;
     const avatar = message.meta?.avatar;
+    const [isEditing, setIsEditing] = useState(false);
+    const [draft, setDraft] = useState(message.content);
 
     const handleAction = useCallback(
       async (action: ChatListActionType) => {
@@ -52,9 +79,14 @@ const ChatListItem = memo<ChatListItemProps>(
             // ignore
           }
         }
+        if (action === "edit" && onMessageChange && !loading) {
+          setDraft(message.content);
+          setIsEditing(true);
+        }
+        onActionsClick?.(action, message.id, message);
         onActionClick?.(action, message.id, message);
       },
-      [message, onActionClick],
+      [loading, message, onActionClick, onActionsClick, onMessageChange],
     );
 
     const containerClassName =
@@ -65,6 +97,37 @@ const ChatListItem = memo<ChatListItemProps>(
             isUser ? "bg-primary text-primary-foreground" : "bg-muted",
           );
 
+    const handleSave = useCallback(() => {
+      onMessageChange?.(message.id, draft);
+      setIsEditing(false);
+    }, [draft, message.id, onMessageChange]);
+
+    const handleCancel = useCallback(() => {
+      setDraft(message.content);
+      setIsEditing(false);
+    }, [message.content]);
+
+    const avatarProps = useMemo(
+      () =>
+        onAvatarsClick
+          ? {
+              className: "mt-1 cursor-pointer",
+              onClick: () => onAvatarsClick(message),
+            }
+          : { className: "mt-1" },
+      [message, onAvatarsClick],
+    );
+
+    const defaultActions = (
+      <ChatListItemActions onActionClick={handleAction} text={text} />
+    );
+
+    const actionSlot = isEditing
+      ? null
+      : renderActions
+        ? renderActions(message, defaultActions)
+        : defaultActions;
+
     return (
       <div
         className={cn(
@@ -73,7 +136,7 @@ const ChatListItem = memo<ChatListItemProps>(
         )}
       >
         {showAvatar && !isUser ? (
-          <Avatar className="mt-1">
+          <Avatar {...avatarProps}>
             {typeof avatar === "string" && /^(https?:\/\/|\/)/.test(avatar) ? (
               <AvatarImage alt={title ?? "avatar"} src={avatar} />
             ) : null}
@@ -107,11 +170,43 @@ const ChatListItem = memo<ChatListItemProps>(
                 <RotateCcw className="h-4 w-4 animate-spin" />
                 <span>Loading...</span>
               </div>
+            ) : isEditing ? (
+              <div className="flex flex-col gap-3">
+                <textarea
+                  className={cn(
+                    "min-h-[96px] w-full resize-y rounded-md border bg-background/80",
+                    "px-3 py-2 text-sm text-foreground",
+                  )}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancel}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleSave}>
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ) : message.error && renderErrorMessages ? (
+              <div className="text-sm leading-relaxed">
+                {renderErrorMessages(message)}
+              </div>
             ) : (
               <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {message.content}
+                {renderMessages ? renderMessages(message) : message.content}
               </div>
             )}
+
+            {!loading && !isEditing && renderMessagesExtra ? (
+              <div className="mt-2">{renderMessagesExtra(message)}</div>
+            ) : null}
 
             <div
               className={cn(
@@ -119,52 +214,13 @@ const ChatListItem = memo<ChatListItemProps>(
                 "group-hover:opacity-100",
               )}
             >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                aria-label={text?.copy ?? "Copy"}
-                onClick={() => handleAction("copy")}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                aria-label={text?.edit ?? "Edit"}
-                onClick={() => handleAction("edit")}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                aria-label={text?.regenerate ?? "Regenerate"}
-                onClick={() => handleAction("regenerate")}
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                aria-label={text?.delete ?? "Delete"}
-                onClick={() => handleAction("delete")}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {actionSlot}
             </div>
           </div>
         </div>
 
         {showAvatar && isUser ? (
-          <Avatar className="mt-1">
+          <Avatar {...avatarProps}>
             {typeof avatar === "string" && /^(https?:\/\/|\/)/.test(avatar) ? (
               <AvatarImage alt={title ?? "avatar"} src={avatar} />
             ) : null}
