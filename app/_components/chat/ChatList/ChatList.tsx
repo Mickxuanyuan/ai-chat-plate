@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo } from "react";
+import { Fragment, memo, useEffect, useRef } from "react";
 
 import { cn } from "@/utils/tools";
 
@@ -30,6 +30,13 @@ const ChatList = memo<ChatListProps>(
     renderMessagesExtra,
     ...rest
   }) => {
+    const endRef = useRef<HTMLDivElement | null>(null);
+    const lastMessage = data[data.length - 1];
+
+    useEffect(() => {
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, [data.length, lastMessage?.content, lastMessage?.error, loadingId]);
+
     return (
       <div
         className={cn("flex w-full flex-col gap-4 p-20", className)}
@@ -86,6 +93,7 @@ const ChatList = memo<ChatListProps>(
             </Fragment>
           );
         })}
+        <div ref={endRef} aria-hidden="true" />
       </div>
     );
   },

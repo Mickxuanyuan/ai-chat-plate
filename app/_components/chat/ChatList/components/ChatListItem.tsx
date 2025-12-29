@@ -70,6 +70,21 @@ const ChatListItem = memo<ChatListItemProps>(
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(message.content);
     const isLoadingPlaceholder = message.content.trim() === "...";
+    const defaultErrorMessage = useMemo(() => {
+      if (!message.error) {
+        return null;
+      }
+      if (typeof message.error === "string" && message.error.trim()) {
+        return message.error;
+      }
+      if (
+        typeof message.error?.message === "string" &&
+        message.error.message.trim()
+      ) {
+        return message.error.message;
+      }
+      return "Generation failed.";
+    }, [message.error]);
 
     const handleAction = useCallback(
       async (action: ChatListActionType) => {
@@ -201,9 +216,11 @@ const ChatListItem = memo<ChatListItemProps>(
                 <RotateCcw className="h-4 w-4 animate-spin" />
                 <span>Generating...</span>
               </div>
-            ) : message.error && renderErrorMessages ? (
-              <div className="text-sm leading-relaxed">
-                {renderErrorMessages(message)}
+            ) : message.error ? (
+              <div className="text-sm leading-relaxed text-destructive">
+                {renderErrorMessages
+                  ? renderErrorMessages(message)
+                  : defaultErrorMessage}
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -223,15 +240,18 @@ const ChatListItem = memo<ChatListItemProps>(
               <div className="mt-2">{renderMessagesExtra(message)}</div>
             ) : null}
 
+          </div>
+
+          {!loading && !isEditing && actionSlot ? (
             <div
               className={cn(
-                "absolute -bottom-9 right-0 flex items-center gap-1 opacity-0 transition-opacity",
+                "mt-2 flex items-center justify-end gap-1 opacity-0 transition-opacity",
                 "group-hover:opacity-100",
               )}
             >
               {actionSlot}
             </div>
-          </div>
+          ) : null}
         </div>
 
         {showAvatar && isUser ? (

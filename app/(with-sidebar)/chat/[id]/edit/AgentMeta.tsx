@@ -80,13 +80,20 @@ const AgentMeta = () => {
 
   return (
     <div className="rounded-xl border bg-background">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className={cn(
           "flex w-full items-center justify-between gap-3 px-4 py-3",
           "border-b text-left",
         )}
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
       >
         <div className="text-sm font-medium">{t("profile")}</div>
         <div className="flex items-center gap-2">
@@ -112,7 +119,7 @@ const AgentMeta = () => {
             )}
           />
         </div>
-      </button>
+      </div>
 
       {open ? (
         <div className="flex flex-col gap-6 p-4">
