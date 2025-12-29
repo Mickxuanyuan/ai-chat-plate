@@ -32,7 +32,7 @@ const ChatList = memo<ChatListProps>(
   }) => {
     return (
       <div
-        className={cn("flex w-full flex-col gap-4 p-4", className)}
+        className={cn("flex w-full flex-col gap-4 p-20", className)}
         {...rest}
       >
         {data.map((message, index) => {

@@ -12,7 +12,6 @@ import { Button } from "@/app/_components/ui/button";
 import type { ChatMessage } from "@/types/chatMessage";
 import { cn } from "@/utils/tools";
 
-import ChatListItemActions from "./ChatListItemActions";
 import type {
   ChatListActionType,
   ChatListRenderActions,
@@ -21,6 +20,7 @@ import type {
   ChatListRenderMessagesExtra,
   ChatListText,
 } from "../interface";
+import ChatListItemActions from "./ChatListItemActions";
 
 interface ChatListItemProps {
   loading: boolean;
@@ -69,6 +69,7 @@ const ChatListItem = memo<ChatListItemProps>(
     const avatar = message.meta?.avatar;
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(message.content);
+    const isLoadingPlaceholder = message.content.trim() === "...";
 
     const handleAction = useCallback(
       async (action: ChatListActionType) => {
@@ -122,11 +123,12 @@ const ChatListItem = memo<ChatListItemProps>(
       <ChatListItemActions onActionClick={handleAction} text={text} />
     );
 
-    const actionSlot = isEditing
-      ? null
-      : renderActions
-        ? renderActions(message, defaultActions)
-        : defaultActions;
+    const actionSlot =
+      loading || isEditing
+        ? null
+        : renderActions
+          ? renderActions(message, defaultActions)
+          : defaultActions;
 
     return (
       <div
@@ -152,7 +154,12 @@ const ChatListItem = memo<ChatListItemProps>(
           </Avatar>
         ) : null}
 
-        <div className={cn("min-w-0 max-w-[720px]", isUser && "items-end")}>
+        <div
+          className={cn(
+            "flex min-w-0 max-w-[720px] flex-col",
+            isUser && "items-end",
+          )}
+        >
           {showTitle && title ? (
             <div
               className={cn(
@@ -165,12 +172,7 @@ const ChatListItem = memo<ChatListItemProps>(
           ) : null}
 
           <div className={cn("relative", containerClassName)}>
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm opacity-80">
-                <RotateCcw className="h-4 w-4 animate-spin" />
-                <span>Loading...</span>
-              </div>
-            ) : isEditing ? (
+            {isEditing ? (
               <div className="flex flex-col gap-3">
                 <textarea
                   className={cn(
@@ -194,13 +196,26 @@ const ChatListItem = memo<ChatListItemProps>(
                   </Button>
                 </div>
               </div>
+            ) : loading && isLoadingPlaceholder ? (
+              <div className="flex items-center gap-2 text-sm opacity-80">
+                <RotateCcw className="h-4 w-4 animate-spin" />
+                <span>Generating...</span>
+              </div>
             ) : message.error && renderErrorMessages ? (
               <div className="text-sm leading-relaxed">
                 {renderErrorMessages(message)}
               </div>
             ) : (
-              <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {renderMessages ? renderMessages(message) : message.content}
+              <div className="flex flex-col gap-2">
+                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                  {renderMessages ? renderMessages(message) : message.content}
+                </div>
+                {loading ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <RotateCcw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Generating...</span>
+                  </div>
+                ) : null}
               </div>
             )}
 

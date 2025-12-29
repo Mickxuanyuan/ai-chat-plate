@@ -1,5 +1,6 @@
 "use client";
 
+import Head from "next/head";
 import { useRouter } from "next/navigation";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,9 +8,9 @@ import { shallow } from "zustand/shallow";
 
 import { sessionSelectors, useSessionStore } from "@/store/session";
 
-import Header from "./_components/Header";
-import Head from "next/head";
 import Conversation from "./_components/Conversation";
+import Header from "./_components/Header";
+import Config from "./_components/Config";
 
 const Chat = memo(() => {
   const router = useRouter();
@@ -45,11 +46,11 @@ const Chat = memo(() => {
         onToggleSettings={() => toggleConfig()}
       />
       <div
-        id={'lobe-conversion-container'}
-        style={{ height: 'calc(100vh - 64px)', position: 'relative' }}
+        id="lobe-conversion-container"
+        className="relative flex h-[calc(100vh-64px)] w-full flex-col"
       >
         <Conversation />
-        {/* <Config /> */}
+        <Config />
       </div>
     </div>
   );

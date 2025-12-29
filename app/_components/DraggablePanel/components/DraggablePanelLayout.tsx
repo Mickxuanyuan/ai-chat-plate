@@ -74,6 +74,17 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
 
   const panelRef = useRef<PanelImperativeHandle | null>(null);
   const lastExpandedSizeRef = useRef<string | undefined>(undefined);
+  const resizeGestureRef = useRef<{
+    startX: number;
+    startY: number;
+    isResizing: boolean;
+    suppressToggleClick: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    isResizing: false,
+    suppressToggleClick: false,
+  });
 
   const toPercentageString = useCallback((value: number | string) => {
     if (typeof value === "number") return `${value}%`;
@@ -98,6 +109,12 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
       maxPanelSize === undefined ? undefined : toPercentageString(maxPanelSize),
     [maxPanelSize, toPercentageString],
   );
+
+  const resolvedMinPanelSizeWhenExpanded = resolvedMinPanelSize;
+  const resolvedMinPanelSizeWhenCollapsed = "0%";
+  const resolvedMinPanelSizeWithExpandState = isExpand
+    ? resolvedMinPanelSizeWhenExpanded
+    : resolvedMinPanelSizeWhenCollapsed;
 
   useEffect(() => {
     const api = panelRef.current;
@@ -172,11 +189,9 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
 
   const panelNode = (
     <ResizablePanel
-      collapsedSize={resolvedCollapsedPanelSize}
-      collapsible
       defaultSize={resolvedDefaultPanelSize}
       maxSize={resolvedMaxPanelSize}
-      minSize={resolvedMinPanelSize}
+      minSize={resolvedMinPanelSizeWithExpandState}
       panelRef={panelRef}
     >
       <DraggablePanel
@@ -198,10 +213,7 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
   const contentNode = <ResizablePanel>{content}</ResizablePanel>;
 
   return (
-    <div
-      className={cn("group relative h-full w-full", className)}
-      style={style}
-    >
+    <div className={cn("relative h-full w-full", className)} style={style}>
       <ResizablePanelGroup className="h-full w-full" orientation={orientation}>
         {isPanelFirst ? panelNode : contentNode}
         <ResizableHandle
@@ -209,6 +221,24 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
           className={cn(withCollapseButton && "relative")}
           onPointerEnter={() => setIsHoverHandle(true)}
           onPointerLeave={() => setIsHoverHandle(false)}
+          onPointerDown={(e) => {
+            resizeGestureRef.current.startX = e.clientX;
+            resizeGestureRef.current.startY = e.clientY;
+            resizeGestureRef.current.isResizing = false;
+          }}
+          onPointerMove={(e) => {
+            const dx = Math.abs(e.clientX - resizeGestureRef.current.startX);
+            const dy = Math.abs(e.clientY - resizeGestureRef.current.startY);
+            if (dx + dy > 3) resizeGestureRef.current.isResizing = true;
+          }}
+          onPointerUp={() => {
+            if (!resizeGestureRef.current.isResizing) return;
+            resizeGestureRef.current.suppressToggleClick = true;
+            window.setTimeout(() => {
+              resizeGestureRef.current.suppressToggleClick = false;
+            }, 0);
+            resizeGestureRef.current.isResizing = false;
+          }}
         >
           {withCollapseButton && (
             <Button
@@ -224,7 +254,21 @@ const DraggablePanelLayout = memo<DraggablePanelLayoutProps>((props) => {
                 "opacity-0 transition-opacity",
                 shouldShowToggle && "opacity-100",
               )}
-              onClick={() => setExpandState(!isExpand)}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resizeGestureRef.current.isResizing = false;
+                resizeGestureRef.current.suppressToggleClick = false;
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+              }}
+              onPointerMove={(e) => {
+                e.stopPropagation();
+              }}
+              onClick={() => {
+                if (resizeGestureRef.current.suppressToggleClick) return;
+                setExpandState(!isExpand);
+              }}
             >
               <ToggleIcon className="size-4" />
             </Button>
